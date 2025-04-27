@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'editprofile.dart';
+import '../../home/streak_service.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -12,6 +13,7 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   int _currentIndex = 4; // Default to profile being selected
   String? userEmail;
+  int? userStreak;
   String? userName ;
   final String profileImagePath = 'assets/user_image.png';
 
@@ -19,6 +21,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void initState() {
     super.initState();
     _fetchUserEmail();
+    _fetchUserStreak();
   }
 
   Future<void> _fetchUserEmail() async {
@@ -28,6 +31,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
       userName = user?.displayName;
     });
   }
+Future<void> _fetchUserStreak() async {
+  try {
+    final data = await StreakService.getUserStreakData();
+    if (data != null && mounted) {
+      setState(() {
+        userStreak = data['streakCount'];
+      });
+    }
+  } catch (e) {
+    print('Error fetching streak: $e');
+  }
+}
 
   Future<void> _logout(BuildContext context) async {
     try {
@@ -88,7 +103,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       children: [
         _buildCard(
           title: 'Daily Stress Tracker',
-          value: '5 Days Streak',
+value: userStreak != null ? '$userStreak Days Streak' : 'Loading...',
           icon: Icons.stacked_bar_chart,
           color: Colors.green,
         ),

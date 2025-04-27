@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:just_audio/just_audio.dart';
 import 'streak_service.dart';
-import 'meditation_timer.dart';
+
+// Import for Timer
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -13,14 +14,18 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  int _currentIndex = 2;
   Timer? _timer;
-  int _start = 600;
+  int _start = 180; // Default 3 minutes
+  int selectedDuration = 180;
+  bool playMusic = false; // For music toggle
+  final AudioPlayer _audioPlayer = AudioPlayer();
+  bool _isMeditating = false; // Track meditation state
+  int _currentIndex = 2;
   List<Map<String, String>> recommendedMusic = [];
   String? selectedMood;
-  final AudioPlayer _audioPlayer = AudioPlayer();
   bool _isPlaying = false;
   String? _currentlyPlayingTitle;
+  bool _isPaused = false; // New variable
 
   @override
   void initState() {
@@ -89,7 +94,7 @@ class _HomeScreenState extends State<HomeScreen> {
       print("Error playing music: $e");
     }
   }
-  
+
   Future<void> _logout(BuildContext context) async {
     try {
       await FirebaseAuth.instance.signOut();
@@ -289,17 +294,89 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  void _togglePause() {
+    setState(() {
+      _isPaused = !_isPaused;
+    });
+
+    if (_isPaused) {
+      _audioPlayer.pause();
+    } else {
+      _audioPlayer.play();
+    }
+  }
+
   // Start meditation timer logic
-  
+  void _startMeditationTimer() {
+    const oneSec = Duration(seconds: 1);
+    _timer?.cancel();
+    setState(() {
+      _start = selectedDuration;
+      _isMeditating = true;
+      _isPaused = false; // Reset pause
+    });
+
+    if (playMusic) {
+      _audioPlayer
+          .setAsset('assets/music/music_files/ocean_of_peace.mp3')
+          .then((_) {
+        _audioPlayer.play();
+      });
+    }
+
+    _timer = Timer.periodic(oneSec, (Timer timer) {
+      if (!_isPaused) {
+        if (_start == 0) {
+          timer.cancel();
+          _audioPlayer.stop();
+          setState(() {
+            _isMeditating = false;
+          });
+          _showMotivationalQuote();
+        } else {
+          setState(() {
+            _start--;
+          });
+        }
+      }
+    });
+  }
+
+  void _showMotivationalQuote() {
+    List<String> quotes = [
+      "Quiet the mind, and the soul will speak.",
+      "Breathe in peace, breathe out stress.",
+      "Your calm mind is the ultimate weapon against your challenges.",
+      "Every moment is a fresh beginning.",
+    ];
+    final randomQuote = (quotes..shuffle()).first;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Meditation Complete!'),
+        content: Text(randomQuote),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+            },
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
 
   // Timer display widget
   Widget _buildCountdownTimer() {
     final minutes = (_start ~/ 60).toString().padLeft(2, '0');
     final seconds = (_start % 60).toString().padLeft(2, '0');
+
     return Text(
       'Time Left: $minutes:$seconds',
       style: const TextStyle(
-        fontSize: 16,
+        fontSize: 18,
         fontWeight: FontWeight.bold,
         color: Colors.white,
       ),
@@ -307,17 +384,114 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
 // Build Meditation Timer Section
- Widget _buildMeditationTimerSection() {
-  return Container(
-    padding: const EdgeInsets.all(16.0),
-    decoration: BoxDecoration(
-      color: const Color(0xFF0A3737),
-      borderRadius: BorderRadius.circular(12.0),
-    ),
-    child: const MeditationTimer(), // ⭐ Place the new widget here
-  );
-}
-
+  Widget _buildMeditationTimerSection() {
+    return Container(
+      padding: const EdgeInsets.all(16.0),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0A3737),
+        borderRadius: BorderRadius.circular(12.0),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Daily Meditation',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              ElevatedButton(
+                onPressed: () => setState(() {
+                  selectedDuration = 180; // 3 mins
+                }),
+                child: const Text('3 min'),
+              ),
+              ElevatedButton(
+                onPressed: () => setState(() {
+                  selectedDuration = 300; // 5 mins
+                }),
+                child: const Text('5 min'),
+              ),
+              ElevatedButton(
+                onPressed: () => setState(() {
+                  selectedDuration = 600; // 10 mins
+                }),
+                child: const Text('10 min'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Checkbox(
+                value: playMusic,
+                onChanged: (bool? value) {
+                  setState(() {
+                    playMusic = value ?? false;
+                  });
+                },
+              ),
+              const Text(
+                'Play Meditation Music',
+                style: TextStyle(color: Colors.white),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          if (_isMeditating) _buildCountdownTimer(),
+          const SizedBox(height: 10),
+          if (!_isMeditating)
+            ElevatedButton.icon(
+              onPressed: _startMeditationTimer,
+              icon: const Icon(Icons.self_improvement),
+              label: const Text('Start Meditation'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+              ),
+            )
+          else
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                ElevatedButton.icon(
+                  onPressed: _togglePause,
+                  icon: Icon(_isPaused ? Icons.play_arrow : Icons.pause),
+                  label: Text(_isPaused ? 'Resume' : 'Pause'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orange,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    _timer?.cancel();
+                    _audioPlayer.stop();
+                    setState(() {
+                      _isMeditating = false;
+                      _isPaused = false;
+                    });
+                  },
+                  icon: const Icon(Icons.stop),
+                  label: const Text('Stop'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
 
 // journaling / writing section
   Widget _buildFeelingSection() {
@@ -484,7 +658,6 @@ class _HomeScreenState extends State<HomeScreen> {
                       ],
                     ),
                   ),
-
                 );
               }),
             ],
@@ -737,14 +910,13 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
       backgroundColor: const Color(0xFFF3FFFF),
-
       body: SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.all(16.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              MeditationTimer(),
+              _buildMeditationTimerSection(),
               // 🔥 Streak Tracker Section
               const SizedBox(height: 20),
               _buildJournalSection(), // Updated method name here
@@ -805,6 +977,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 }
+
 Widget _buildStreakTile({
   required IconData icon,
   required String title,

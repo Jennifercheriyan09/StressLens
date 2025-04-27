@@ -1,217 +1,173 @@
 import 'package:flutter/material.dart';
 
-class QnaPage extends StatefulWidget {
-  const QnaPage({super.key});
+class DailyStressCheckScreen extends StatefulWidget {
+  const DailyStressCheckScreen({Key? key}) : super(key: key);
 
   @override
-  _QnaPageState createState() => _QnaPageState();
+  State<DailyStressCheckScreen> createState() => _DailyStressCheckScreenState();
 }
 
-class _QnaPageState extends State<QnaPage> {
-  final List<Question> _questions = [
-    Question(
-      text: '1. How are you feeling today?',
-      options: ['Happy', 'Sad', 'Anger', 'Nervous', 'Excited'],
-    ),
-    Question(
-      text: '2. How often do you experience stress or anxiety?',
-      options: ['Rarely', 'Sometimes', 'Often', 'Always'],
-    ),
-    Question(
-      text: '3. How does stress generally affect your daily life?',
-      options: ['Positively', 'Negatively', 'No Effect'],
-    ),
-    Question(
-      text: '4. What do you do to manage your stress?',
-      options: ['Meditation', 'Exercise', 'Talking to friends', 'None'],
-    ),
-    Question(
-      text: '5. What activities help improve your mood?',
-      options: ['Listening to Music', 'Going for a Walk', 'Reading', 'Other'],
-    ),
+class _DailyStressCheckScreenState extends State<DailyStressCheckScreen> {
+  List<int?> _answers = List.generate(4, (index) => null);
+
+  final List<Map<String, dynamic>> _questions = [
+    {
+      'question': '1. How stressed do you feel right now?',
+      'options': ['Not at all', 'Mild', 'Moderate', 'High', 'Severe'],
+      'points': [0, 1, 2, 3, 4],
+    },
+    {
+      'question': '2. How well are you able to focus today?',
+      'options': ['Very well', 'Okay', 'Difficult', 'Very difficult'],
+      'points': [0, 1, 2, 3],
+    },
+    {
+      'question': '3. How is your energy level today?',
+      'options': ['High', 'Medium', 'Low'],
+      'points': [0, 1, 2],
+    },
+    {
+      'question': '4. How tense does your body feel right now?',
+      'options': ['Relaxed', 'A little tense', 'Quite tense', 'Very tense'],
+      'points': [0, 1, 2, 3],
+    },
   ];
 
-  int _currentQuestionIndex = 0;
-  String? _selectedAnswer;
-
-  void _nextQuestion() {
-    if (_currentQuestionIndex < _questions.length - 1) {
-      setState(() {
-        _currentQuestionIndex++;
-        _selectedAnswer = null; // Reset selection for the next question
-      });
-    } else {
-      _showSummaryDialog();
+  void _submitCheckIn() {
+    int totalScore = 0;
+    for (int i = 0; i < _answers.length; i++) {
+      if (_answers[i] != null) {
+        totalScore += (_questions[i]['points'][_answers[i]!] as int); // 🔥 fixed casting
+      }
     }
-  }
 
-  void _showSummaryDialog() {
+    String mood = '';
+    String advice = '';
+
+    if (totalScore <= 4) {
+      mood = 'Feeling Calm 🌿';
+      advice = 'Great! Keep embracing the calmness.';
+    } else if (totalScore <= 8) {
+      mood = 'Mild Stress 🌼';
+      advice = 'Maybe take 5 deep breaths and relax.';
+    } else if (totalScore <= 12) {
+      mood = 'Moderate Stress 🌾';
+      advice = 'Consider taking a short meditation or walk.';
+    } else {
+      mood = 'High Stress 🔥';
+      advice = 'Pause, breathe deeply. Maybe journal or meditate.';
+    }
+
     showDialog(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Summary of Your Answers'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: _questions.asMap().entries.map((entry) {
-              int idx = entry.key;
-              return Text(
-                '${entry.value.text} \nYour answer: ${entry.value.selectedAnswer ?? "No answer"}',
-                style: const TextStyle(fontSize: 16),
-              );
-            }).toList(),
+      builder: (context) => AlertDialog(
+        title: const Text('Today\'s Stress Check-In'),
+        content: Text('$mood\n\n$advice'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+            },
+            child: const Text('OK'),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('OK'),
-            ),
-          ],
-        );
-      },
+        ],
+      ),
     );
   }
 
-  void _setSelectedAnswer(String answer) {
-    setState(() {
-      _selectedAnswer = answer;
-      _questions[_currentQuestionIndex].selectedAnswer =
-          answer; // Store the selected answer
-    });
+  Widget _buildQuestionCard(int index) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white, // 🤍 White card background
+        borderRadius: BorderRadius.circular(15),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.3),
+            spreadRadius: 2,
+            blurRadius: 8,
+            offset: const Offset(0, 3), // Shadow position
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              _questions[index]['question'],
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF0B3534), // Dark teal color
+              ),
+            ),
+            const SizedBox(height: 10),
+            ...List.generate(_questions[index]['options'].length, (optionIndex) {
+              return RadioListTile<int>(
+                title: Text(_questions[index]['options'][optionIndex]),
+                value: optionIndex,
+                groupValue: _answers[index],
+                onChanged: (value) {
+                  setState(() {
+                    _answers[index] = value;
+                  });
+                },
+                activeColor: const Color(0xFF0B3534), // Theme color for selected radio
+              );
+            }),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Q&A Page')),
+      backgroundColor: const Color(0xFFF3FFFF), // Light teal page background
+      appBar: AppBar(
+        title: const Text('Daily Stress Check', style: TextStyle(color: Colors.white)),
+        backgroundColor: const Color(0xFF0B3534),
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
-        child: Column(
+        child: ListView(
           children: [
-            Container(
-              decoration: BoxDecoration(
-                color: Colors.white, // Light background color
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.grey.withOpacity(0.5),
-                    blurRadius: 5,
-                    spreadRadius: 2,
-                    offset: const Offset(0, 3), // changes position of shadow
-                  ),
-                ],
-              ),
-              padding: const EdgeInsets.all(16.0),
-              width: double.infinity, // Take full width
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Question Text with Background Color
-                  Container(
-                    padding: const EdgeInsets.all(16.0),
-                    decoration: BoxDecoration(
-                      color: Colors.lightBlueAccent.withOpacity(
-                          0.3), // Light background color for the question
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      _questions[_currentQuestionIndex].text,
-                      style: const TextStyle(
-                          fontSize: 22, fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  Column(
-                    children:
-                        _questions[_currentQuestionIndex].options.map((option) {
-                      bool isSelected = _selectedAnswer ==
-                          option; // Check if this option is selected
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8.0),
-                        child: Center(
-                          // Center the button
-                          child: ElevatedButton(
-                            onPressed: () => _setSelectedAnswer(option),
-                            style: ElevatedButton.styleFrom(
-                              padding:
-                                  const EdgeInsets.symmetric(vertical: 15.0),
-                              backgroundColor: isSelected
-                                  ? Colors.grey
-                                  : const Color(
-                                      0xFF0E8388), // Change color if selected
-                              foregroundColor: isSelected
-                                  ? const Color(0xFF0E8388)
-                                  : Colors
-                                      .white, // Change text color based on selection
-                              minimumSize: const Size(
-                                  200, 50), // Adjust the width of the button
-                            ),
-                            child: Text(
-                              option,
-                              style: const TextStyle(fontSize: 18),
-                            ),
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                ],
+            const Text(
+              'Answer a few quick questions to reflect on your day:',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF0B3534),
               ),
             ),
-            const Spacer(), // Pushes buttons to the bottom
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                if (_currentQuestionIndex > 0)
-                  ElevatedButton(
-                    onPressed: () {
-                      setState(() {
-                        _currentQuestionIndex--;
-                        _selectedAnswer = _questions[_currentQuestionIndex]
-                            .selectedAnswer; // Resume the selected answer
-                      });
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF0E8388),
-                      foregroundColor: Colors.white,
-                      minimumSize: const Size(100, 50),
-                    ),
-                    child: const Text('Back'),
-                  ),
-                if (_currentQuestionIndex < _questions.length - 1)
-                  ElevatedButton(
-                    onPressed: _selectedAnswer != null ? _nextQuestion : null,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF0E8388),
-                      foregroundColor: Colors.white,
-                      minimumSize: const Size(100, 50),
-                    ), // Enable button only if an answer is selected
-                    child: const Text('Next'),
-                  ),
-                if (_currentQuestionIndex ==
-                    _questions.length - 1) // On the last question
-                  ElevatedButton(
-                    onPressed:
-                        _selectedAnswer != null ? _showSummaryDialog : null,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF0E8388),
-                      minimumSize: const Size(100, 50),
-                    ), // Enable submit button
-                    child: const Text('Submit'),
-                  ),
-              ],
+            const SizedBox(height: 16),
+            ...List.generate(_questions.length, (index) => _buildQuestionCard(index)),
+            const SizedBox(height: 30),
+            Center(
+              child: ElevatedButton(
+                onPressed: () {
+                  if (_answers.contains(null)) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Please answer all questions')),
+                    );
+                  } else {
+                    _submitCheckIn();
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                ),
+                child: const Text('Submit Check-In', style: TextStyle(fontSize: 16)),
+              ),
             ),
           ],
         ),
       ),
     );
   }
-}
-
-class Question {
-  final String text;
-  final List<String> options;
-  String? selectedAnswer; // Track the selected answer for each question
-
-  Question({required this.text, required this.options, this.selectedAnswer});
 }

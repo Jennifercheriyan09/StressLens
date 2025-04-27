@@ -23,6 +23,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int selectedDayOffset = 0; // 0 = Today, 1 = Yesterday, etc.
 
   StreamSubscription? _linkSub;
+  String aiPredictionResult = "Loading AI prediction...";
+  String recommendationResult = "Loading recommendations...";
 
   String? heartRate = "Fetching...";
   String? steps = "Fetching...";
@@ -47,18 +49,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
     clearTokensAtStart();
     initUniLinks();
     fetchFitbitData().then((_) => fetchAndPredictHourlyStress());
+    fetchAiAndRecommendations(); // Fetch AI predictions after graphs
     startHourlyAutoSave();
   }
+
   void startHourlyAutoSave() {
-  Timer.periodic(Duration(hours: 1), (timer) {
-    saveTodayDataAuto();
-  });
-}
-Future<void> clearTokensAtStart() async {
-  await storage.delete(key: 'access_token');
-  await storage.delete(key: 'refresh_token');
-  print("🧹 Tokens cleared at app start!");
-}
+    Timer.periodic(Duration(hours: 1), (timer) {
+      saveTodayDataAuto();
+    });
+  }
+
+  Future<void> clearTokensAtStart() async {
+    await storage.delete(key: 'access_token');
+    await storage.delete(key: 'refresh_token');
+    print("🧹 Tokens cleared at app start!");
+  }
 
   @override
   void dispose() {
@@ -118,151 +123,301 @@ Future<void> clearTokensAtStart() async {
   int toInt(String? val) => int.tryParse(val ?? '') ?? 0;
   double toDouble(String? val) => double.tryParse(val ?? '') ?? 0.0;
   Future<void> savePast7DaysData() async {
-  final now = DateTime.now();
-  final firestore = FirebaseFirestore.instance;
-  final token = await storage.read(key: 'access_token');
-  if (token == null) {
-    print("❌ No Access Token");
-    return;
-  }
-
-  final headers = {'Authorization': 'Bearer $token'};
-
-  for (int dayOffset = 0; dayOffset < 7; dayOffset++) {
-    final selectedDate = now.subtract(Duration(days: dayOffset));
-    final formattedDate =
-        "${selectedDate.year}-${selectedDate.month.toString().padLeft(2, '0')}-${selectedDate.day.toString().padLeft(2, '0')}";
-
-    final docSnapshot = await firestore
-        .collection('user_health_data')
-        .doc(formattedDate)
-        .get();
-
-    if (docSnapshot.exists) {
-      print("✅ $formattedDate already exists. Skipping...");
-      continue;
+    final now = DateTime.now();
+    final firestore = FirebaseFirestore.instance;
+    final token = await storage.read(key: 'access_token');
+    if (token == null) {
+      print("❌ No Access Token");
+      return;
     }
 
-    try {
-      // Fetch heart, steps, calories
-      final heartUrl =
-          'https://api.fitbit.com/1/user/-/activities/heart/date/$formattedDate/1d/1min.json';
-      final stepsUrl =
-          'https://api.fitbit.com/1/user/-/activities/steps/date/$formattedDate/1d/1min.json';
-      final caloriesUrl =
-          'https://api.fitbit.com/1/user/-/activities/calories/date/$formattedDate/1d/1min.json';
+    final headers = {'Authorization': 'Bearer $token'};
 
-      final responses = await Future.wait([
-        http.get(Uri.parse(heartUrl), headers: headers),
-        http.get(Uri.parse(stepsUrl), headers: headers),
-        http.get(Uri.parse(caloriesUrl), headers: headers),
-      ]);
+    for (int dayOffset = 0; dayOffset < 7; dayOffset++) {
+      final selectedDate = now.subtract(Duration(days: dayOffset));
+      final formattedDate =
+          "${selectedDate.year}-${selectedDate.month.toString().padLeft(2, '0')}-${selectedDate.day.toString().padLeft(2, '0')}";
 
-      if (responses.any((r) => r.statusCode != 200)) {
-        print('❌ Failed fetching intraday for $formattedDate');
+      final docSnapshot = await firestore
+          .collection('user_health_data')
+          .doc(formattedDate)
+          .get();
+
+      if (docSnapshot.exists) {
+        print("✅ $formattedDate already exists. Skipping...");
         continue;
       }
 
-      final heartData =
-          jsonDecode(responses[0].body)['activities-heart-intraday']['dataset'];
-      final stepsData =
-          jsonDecode(responses[1].body)['activities-steps-intraday']['dataset'];
-      final caloriesData =
-          jsonDecode(responses[2].body)['activities-calories-intraday']['dataset'];
+      try {
+        // Fetch heart, steps, calories
+        final heartUrl =
+            'https://api.fitbit.com/1/user/-/activities/heart/date/$formattedDate/1d/1min.json';
+        final stepsUrl =
+            'https://api.fitbit.com/1/user/-/activities/steps/date/$formattedDate/1d/1min.json';
+        final caloriesUrl =
+            'https://api.fitbit.com/1/user/-/activities/calories/date/$formattedDate/1d/1min.json';
 
-      Map<int, List<double>> heartBuckets = {},
-          stepBuckets = {},
-          calorieBuckets = {};
-      for (int h = 0; h < 24; h++) {
-        heartBuckets[h] = [];
-        stepBuckets[h] = [];
-        calorieBuckets[h] = [];
-      }
+        final responses = await Future.wait([
+          http.get(Uri.parse(heartUrl), headers: headers),
+          http.get(Uri.parse(stepsUrl), headers: headers),
+          http.get(Uri.parse(caloriesUrl), headers: headers),
+        ]);
 
-      void groupByHour(List<dynamic> data, Map<int, List<double>> bucket) {
-        for (var entry in data) {
-          final time = entry['time'];
-          final value = (entry['value'] as num).toDouble();
-          final hour = int.tryParse(time.split(":")[0]) ?? 0;
-          bucket[hour]?.add(value);
+        if (responses.any((r) => r.statusCode != 200)) {
+          print('❌ Failed fetching intraday for $formattedDate');
+          continue;
         }
+
+        final heartData =
+            jsonDecode(responses[0].body)['activities-heart-intraday']
+                ['dataset'];
+        final stepsData =
+            jsonDecode(responses[1].body)['activities-steps-intraday']
+                ['dataset'];
+        final caloriesData =
+            jsonDecode(responses[2].body)['activities-calories-intraday']
+                ['dataset'];
+
+        Map<int, List<double>> heartBuckets = {},
+            stepBuckets = {},
+            calorieBuckets = {};
+        for (int h = 0; h < 24; h++) {
+          heartBuckets[h] = [];
+          stepBuckets[h] = [];
+          calorieBuckets[h] = [];
+        }
+
+        void groupByHour(List<dynamic> data, Map<int, List<double>> bucket) {
+          for (var entry in data) {
+            final time = entry['time'];
+            final value = (entry['value'] as num).toDouble();
+            final hour = int.tryParse(time.split(":")[0]) ?? 0;
+            bucket[hour]?.add(value);
+          }
+        }
+
+        groupByHour(heartData, heartBuckets);
+        groupByHour(stepsData, stepBuckets);
+        groupByHour(caloriesData, calorieBuckets);
+
+        Map<String, dynamic> hourlyData = {};
+
+        for (int h = 0; h < 24; h++) {
+          final hrAvg = heartBuckets[h]!.isNotEmpty
+              ? (heartBuckets[h]!.reduce((a, b) => a + b) /
+                      heartBuckets[h]!.length)
+                  .round()
+              : 0;
+          final stepsSum = stepBuckets[h]!.isNotEmpty
+              ? stepBuckets[h]!.reduce((a, b) => a + b).round()
+              : 0;
+          final calSum = calorieBuckets[h]!.isNotEmpty
+              ? calorieBuckets[h]!.reduce((a, b) => a + b).round()
+              : 0;
+
+          final hourString = h.toString().padLeft(2, '0');
+
+          hourlyData[hourString] = {
+            "heart_rate": hrAvg,
+            "steps": stepsSum,
+            "calories": calSum,
+          };
+        }
+
+        // Save hourly + static data
+        await firestore.collection('user_health_data').doc(formattedDate).set({
+          "date": formattedDate,
+          "data": hourlyData,
+          "summary": {
+            "resting_hr": heartRate ?? "N/A",
+            "sleep_summary": sleepSummary ?? "N/A",
+            "hrv": hrv ?? "N/A",
+            "azm": zoneMinutes ?? "N/A",
+          },
+        });
+
+        print("✅ Saved full data for $formattedDate!");
+      } catch (e) {
+        print('❌ Error fetching/saving for $formattedDate: $e');
       }
-
-      groupByHour(heartData, heartBuckets);
-      groupByHour(stepsData, stepBuckets);
-      groupByHour(caloriesData, calorieBuckets);
-
-      Map<String, dynamic> hourlyData = {};
-
-      for (int h = 0; h < 24; h++) {
-        final hrAvg = heartBuckets[h]!.isNotEmpty
-            ? (heartBuckets[h]!.reduce((a, b) => a + b) / heartBuckets[h]!.length).round()
-            : 0;
-        final stepsSum = stepBuckets[h]!.isNotEmpty
-            ? stepBuckets[h]!.reduce((a, b) => a + b).round()
-            : 0;
-        final calSum = calorieBuckets[h]!.isNotEmpty
-            ? calorieBuckets[h]!.reduce((a, b) => a + b).round()
-            : 0;
-
-        final hourString = h.toString().padLeft(2, '0');
-
-        hourlyData[hourString] = {
-          "heart_rate": hrAvg,
-          "steps": stepsSum,
-          "calories": calSum,
-        };
-      }
-
-      // Save hourly + static data
-      await firestore.collection('user_health_data').doc(formattedDate).set({
-        "date": formattedDate,
-        "data": hourlyData,
-        "summary": {
-          "resting_hr": heartRate ?? "N/A",
-          "sleep_summary": sleepSummary ?? "N/A",
-          "hrv": hrv ?? "N/A",
-          "azm": zoneMinutes ?? "N/A",
-        },
-      });
-
-      print("✅ Saved full data for $formattedDate!");
-    } catch (e) {
-      print('❌ Error fetching/saving for $formattedDate: $e');
     }
   }
-}
-Future<void> saveTodayDataAuto() async {
-  final now = DateTime.now();
-  final formattedDate =
-      "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
 
-  final firestore = FirebaseFirestore.instance;
+  Future<void> saveTodayDataAuto() async {
+    final now = DateTime.now();
+    final formattedDate =
+        "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
 
-  Map<String, dynamic> hourlyData = {};
+    final firestore = FirebaseFirestore.instance;
 
-  for (int h = 0; h <= now.hour; h++) {
-    hourlyData[h.toString().padLeft(2, '0')] = {
-      "heart_rate": hourlyHeartRate[h].round(),
-      "steps": hourlySteps[h].round(),
-      "calories": hourlyCalories[h].round(),
-    };
+    Map<String, dynamic> hourlyData = {};
+
+    for (int h = 0; h <= now.hour; h++) {
+      hourlyData[h.toString().padLeft(2, '0')] = {
+        "heart_rate": hourlyHeartRate[h].round(),
+        "steps": hourlySteps[h].round(),
+        "calories": hourlyCalories[h].round(),
+      };
+    }
+
+    await firestore.collection('user_health_data').doc(formattedDate).set({
+      "date": formattedDate,
+      "data": hourlyData,
+      "summary": {
+        "resting_hr": heartRate ?? "N/A",
+        "sleep_summary": sleepSummary ?? "N/A",
+        "hrv": hrv ?? "N/A",
+        "azm": zoneMinutes ?? "N/A",
+      },
+    });
+
+    print("✅ Auto-saved latest data for Today!");
   }
 
-  await firestore.collection('user_health_data').doc(formattedDate).set({
-    "date": formattedDate,
-    "data": hourlyData,
-    "summary": {
-      "resting_hr": heartRate ?? "N/A",
-      "sleep_summary": sleepSummary ?? "N/A",
-      "hrv": hrv ?? "N/A",
-      "azm": zoneMinutes ?? "N/A",
-    },
-  });
+  Future<String?> fetchAiPrediction(Map<String, dynamic> healthData) async {
+    final url = Uri.parse('https://stress-api-lafw.onrender.com/ai_predict');
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(healthData),
+      );
 
-  print("✅ Auto-saved latest data for Today!");
-}
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['stress_level'];
+      } else {
+        print('❌ Server error: ${response.statusCode}');
+        return null;
+      }
+    } catch (e) {
+      print('❌ Request error: $e');
+      return null;
+    }
+  }
 
+  Future<String?> fetchRecommendations(Map<String, dynamic> healthData) async {
+    final url =
+        Uri.parse('https://stress-api-lafw.onrender.com/recommendations');
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(healthData),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['recommendations'];
+      } else {
+        print('❌ Server error: ${response.statusCode}');
+        return null;
+      }
+    } catch (e) {
+      print('❌ Request error: $e');
+      return null;
+    }
+  }
+
+  Future<void> fetchAiAndRecommendations() async {
+    final now = DateTime.now();
+
+    final healthData = {
+      "heart_rate": hourlyHeartRate[now.hour.round()].round(),
+      "steps": hourlySteps[now.hour.round()].round(),
+      "calories": hourlyCalories[now.hour.round()].round(),
+      "azm": int.tryParse(zoneMinutes ?? "0") ?? 0,
+      "resting_hr": int.tryParse(heartRate ?? "70") ?? 70,
+      "hrv": double.tryParse(hrv ?? "30.0") ?? 30.0,
+      "sleep_minutes": sleepSummary != null && sleepSummary!.contains("Asleep")
+          ? int.parse(
+              RegExp(r"Asleep: (\d+)").firstMatch(sleepSummary!)?.group(1) ??
+                  '420')
+          : 420,
+      "sleep_efficiency": 0.85,
+    };
+
+    try {
+      final aiResponse = await http.post(
+        Uri.parse('https://stress-api-lafw.onrender.com/ai_predict'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(healthData),
+      );
+
+      final recoResponse = await http.post(
+        Uri.parse('https://stress-api-lafw.onrender.com/recommendations'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(healthData),
+      );
+
+      if (aiResponse.statusCode == 200 && recoResponse.statusCode == 200) {
+        final aiData = jsonDecode(aiResponse.body);
+        final recoData = jsonDecode(recoResponse.body);
+
+        String level = aiData['stress_level'];
+        double score = aiData['score'];
+
+        setState(() {
+          aiPredictionResult = formatStressLevel(level, score);
+          recommendationResult = formatRecommendations(recoData);
+        });
+      } else {
+        setState(() {
+          aiPredictionResult = "Unable to fetch AI prediction.";
+          recommendationResult = "Unable to fetch recommendations.";
+        });
+      }
+    } catch (e) {
+      print("Error fetching AI/recommendations: $e");
+    }
+  }
+
+  String formatStressLevel(String level, double score) {
+    String emoji;
+    Color color;
+
+    if (level == "Low") {
+      emoji = "🟢"; // green
+    } else if (level == "Medium") {
+      emoji = "🟡"; // yellow
+    } else {
+      emoji = "🔴"; // red
+    }
+
+    return "$emoji Stress Level: $level\nConfidence: ${(score * 100).toStringAsFixed(1)}%";
+  }
+
+  String formatRecommendations(Map<String, dynamic> recoData) {
+    String formatted = "";
+
+    if (recoData.containsKey('summary')) {
+      formatted += "📋 Summary:\n";
+      for (var item in recoData['summary']) {
+        formatted += "• $item\n";
+      }
+      formatted += "\n";
+    }
+
+    if (recoData.containsKey('warnings')) {
+      formatted += "⚡ Warning:\n";
+      formatted += recoData['warnings'] + "\n\n";
+    }
+
+    if (recoData.containsKey('recommendations')) {
+      formatted += "🌿 Recommendations:\n";
+      for (var tip in recoData['recommendations']) {
+        formatted += "• $tip\n";
+      }
+      formatted += "\n";
+    }
+
+    if (recoData.containsKey('note')) {
+      formatted += "📝 Note:\n";
+      formatted += recoData['note'];
+    }
+
+    return formatted.trim();
+  }
 
   Future<void> loadSelectedDayFromFirestore() async {
     final firestore = FirebaseFirestore.instance;
@@ -691,12 +846,113 @@ Future<void> saveTodayDataAuto() async {
                 lineColor: Colors.purple,
                 selectedDayOffset: selectedDayOffset,
               ),
+              SizedBox(height: 20), // space before AI card
+
+              Card(
+                color: Colors.green.shade50,
+                elevation: 4,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "🔵 Current Hour Summary",
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      SizedBox(height: 10),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          _buildCurrentStatItem(
+                            icon: Icons.favorite,
+                            label: "Heart Rate",
+                            value:
+                                "${hourlyHeartRate[DateTime.now().hour].round()} bpm",
+                          ),
+                          _buildCurrentStatItem(
+                            icon: Icons.directions_walk,
+                            label: "Steps",
+                            value:
+                                "${hourlySteps[DateTime.now().hour].round()}",
+                          ),
+                          _buildCurrentStatItem(
+                            icon: Icons.local_fire_department,
+                            label: "Calories",
+                            value:
+                                "${hourlyCalories[DateTime.now().hour].round()} kcal",
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              SizedBox(
+                  height: 20), // after this your AI prediction card will come
+
+              SizedBox(height: 20),
+              Card(
+                color: Colors.lightBlue.shade50,
+                elevation: 4,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+                child: Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "🧠 AI Stress Insight",
+                        style: TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                      SizedBox(height: 10),
+                      Text(
+                        aiPredictionResult,
+                        style: TextStyle(fontSize: 16),
+                      ),
+                      Divider(height: 20, color: Colors.blueGrey),
+                      Text(
+                        "🧩 Recommendations:",
+                        style: TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                      SizedBox(height: 10),
+                      Text(
+                        recommendationResult,
+                        style: TextStyle(fontSize: 16),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ],
           ),
         ),
       ),
     );
   }
+}
+
+Widget _buildCurrentStatItem(
+    {required IconData icon, required String label, required String value}) {
+  return Column(
+    children: [
+      Icon(icon, size: 30, color: Colors.teal),
+      SizedBox(height: 6),
+      Text(label, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+      SizedBox(height: 4),
+      Text(value, style: TextStyle(fontSize: 14)),
+    ],
+  );
 }
 
 Widget healthMetricCard(String title, String value) {
@@ -730,15 +986,17 @@ class HourlyLineChart extends StatelessWidget {
     required this.lineColor,
     required this.selectedDayOffset,
   });
-double _getYAxisInterval(String title) {
-  if (title.toLowerCase().contains('steps')) {
-    return 500; // For steps chart
-  } else if (title.toLowerCase().contains('calories')) {
-    return 50; // For calories chart
-  } else {
-    return 20; // Default for others like HR and Stress
+  double _getYAxisInterval(String title) {
+    if (title.toLowerCase().contains('stress')) {
+      return 1; // ✅ Stress Levels (0,1,2) need interval 1
+    } else if (title.toLowerCase().contains('steps')) {
+      return 500; // Steps chart
+    } else if (title.toLowerCase().contains('calories')) {
+      return 50; // Calories chart
+    } else {
+      return 20; // Default for Heart Rate chart
+    }
   }
-}
 
   @override
   Widget build(BuildContext context) {
@@ -838,13 +1096,16 @@ double _getYAxisInterval(String title) {
                   ),
                   minX: 0,
                   maxX: 23, // All 24 hours
-                  minY: 0,
-                  maxY: visibleSpots.isEmpty
-                      ? 10
-                      : (visibleSpots
-                              .map((e) => e.y)
-                              .reduce((a, b) => a > b ? a : b)) +
-                          _getYAxisInterval(title),
+                  minY: title.toLowerCase().contains('stress') ? 0 : 0,
+                  maxY: title.toLowerCase().contains('stress')
+                      ? 2
+                      : (visibleSpots.isEmpty
+                          ? 10
+                          : (visibleSpots
+                                  .map((e) => e.y)
+                                  .reduce((a, b) => a > b ? a : b)) +
+                              _getYAxisInterval(title)),
+
                   lineBarsData: [
                     LineChartBarData(
                       spots: visibleSpots,

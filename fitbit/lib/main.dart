@@ -49,7 +49,7 @@ class MyApp extends StatelessWidget {
         '/music': (context) => const MusicScreen(),
         '/games': (context) => const GamesScreen(),
         '/profile': (context) => const ProfileScreen(),
-        '/qna': (context) => QnaPage(),
+        '/qna': (context) => DailyStressCheckScreen(),
         '/journal': (context) => JournalPage(),
         '/flower_bloom': (context) => FlowerBloomScreen(),
         '/chill_farm': (context) => ChillFarmScreen(),

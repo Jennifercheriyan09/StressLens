@@ -32,7 +32,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
 
     try {
       final response = await http.post(
-        Uri.parse('https://ecomentor.vercel.app/api/chat'),
+        Uri.parse('https://stress-api-lafw.onrender.com/chat'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'message': message}),
       );
@@ -41,7 +41,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
         final responseData = jsonDecode(response.body);
 
         // Extract the 'response' field from the JSON
-        final botResponse = responseData['response'] as String?;
+        final botResponse = responseData['reply'] as String?;
 
         if (botResponse != null) {
           final botMessage = ChatMessage(
