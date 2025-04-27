@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "831579308658",
+    "project_id": "streens-cec74",
+    "storage_bucket": "streens-cec74.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:831579308658:android:ad88406373e577e529b8eb",
+        "android_client_info": {
+          "package_name": "com.example.fitbit"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "831579308658-j2m2b2fihn36hpk8n75hromhvlqui7sd.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.fitbit",
+            "certificate_hash": "eef5cd089ea31414d75f81dde7499fd3ccf6feb6"
+          }
+        },
+        {
+          "client_id": "831579308658-0cqrpnur5bon091n23igsl8i2a4qt8db.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBD1FvNgASnSGVlbe4qqsHFKcHhWr_E2tw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "831579308658-0cqrpnur5bon091n23igsl8i2a4qt8db.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
